@@ -1,0 +1,257 @@
+import type {
+  AudioOptions,
+  ConcatOptions,
+  ConvertOptions,
+  FramesOptions,
+  JobSpec,
+  ScaleOptions,
+  SubtitleOptions,
+  TrimOptions
+} from '@shared/types'
+
+/** Extra runtime context buildArgs may need (e.g. a generated concat list). */
+export interface BuildContext {
+  concatListPath?: string
+}
+
+/**
+ * Global flags prepended to every ffmpeg invocation:
+ *  -hide_banner   quieter stderr
+ *  -nostdin       never block waiting on stdin
+ *  -y             overwrite the output without prompting
+ *  -progress pipe:1  emit machine-readable progress on stdout
+ */
+const GLOBAL_FLAGS = ['-hide_banner', '-nostdin', '-y', '-progress', 'pipe:1']
+
+function buildConvertArgs(input: string, output: string, o: ConvertOptions): string[] {
+  const args: string[] = ['-i', input]
+
+  // ---- Video ----
+  if (o.videoCodec === 'none') {
+    args.push('-vn')
+  } else if (o.videoCodec === 'copy') {
+    args.push('-c:v', 'copy')
+  } else {
+    args.push('-c:v', o.videoCodec)
+    if (o.preset) args.push('-preset', o.preset)
+    if (o.videoBitrate) {
+      args.push('-b:v', o.videoBitrate)
+    } else if (o.crf !== undefined) {
+      args.push('-crf', String(o.crf))
+    }
+
+    const filters: string[] = []
+    if (o.width !== undefined || o.height !== undefined) {
+      filters.push(`scale=${o.width ?? -1}:${o.height ?? -1}`)
+    }
+    if (filters.length) args.push('-vf', filters.join(','))
+    if (o.fps !== undefined) args.push('-r', String(o.fps))
+  }
+
+  // ---- Audio ----
+  if (o.audioCodec === 'none') {
+    args.push('-an')
+  } else if (o.audioCodec === 'copy') {
+    args.push('-c:a', 'copy')
+  } else {
+    args.push('-c:a', o.audioCodec)
+    if (o.audioBitrate) args.push('-b:a', o.audioBitrate)
+  }
+
+  args.push(output)
+  return args
+}
+
+function buildTrimArgs(input: string, output: string, o: TrimOptions): string[] {
+  const duration = Math.max(0, o.end - o.start)
+  // -ss before -i gives fast input seeking; -t bounds the duration
+  // unambiguously (relative to the seek point).
+  const args = ['-ss', String(o.start), '-i', input, '-t', String(duration)]
+  if (o.reencode) {
+    args.push('-c:v', 'libx264', '-preset', 'veryfast', '-c:a', 'aac')
+  } else {
+    args.push('-c', 'copy')
+  }
+  args.push(output)
+  return args
+}
+
+function buildConcatArgs(listPath: string, output: string, o: ConcatOptions): string[] {
+  const args = ['-f', 'concat', '-safe', '0', '-i', listPath]
+  if (o.mode === 'copy') {
+    args.push('-c', 'copy')
+  } else {
+    args.push('-c:v', 'libx264', '-preset', 'veryfast', '-c:a', 'aac')
+  }
+  args.push(output)
+  return args
+}
+
+function buildScaleArgs(input: string, output: string, o: ScaleOptions): string[] {
+  const { width: w, height: h } = o
+  let vf: string
+  switch (o.mode) {
+    case 'stretch':
+      vf = `scale=${w}:${h},setsar=1`
+      break
+    case 'pad':
+      vf =
+        `scale=w=${w}:h=${h}:force_original_aspect_ratio=decrease,` +
+        `pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2:${o.padColor ?? 'black'},setsar=1`
+      break
+    case 'crop':
+      vf =
+        `scale=w=${w}:h=${h}:force_original_aspect_ratio=increase,` +
+        `crop=${w}:${h},setsar=1`
+      break
+    case 'fit':
+    default:
+      vf = `scale=w=${w}:h=${h}:force_original_aspect_ratio=decrease,setsar=1`
+      break
+  }
+  return ['-i', input, '-vf', vf, '-c:a', 'copy', output]
+}
+
+function buildFramesArgs(input: string, output: string, o: FramesOptions): string[] {
+  if (o.mode === 'single') {
+    const args = ['-ss', String(o.timestamp ?? 0), '-i', input, '-frames:v', '1']
+    if (o.format === 'jpg' && o.quality !== undefined) args.push('-q:v', String(o.quality))
+    args.push(output)
+    return args
+  }
+  // interval mode: `output` is expected to be a printf-style pattern
+  const rate = o.fps ? `fps=${o.fps}` : `fps=1/${o.intervalSeconds ?? 1}`
+  const args = ['-i', input, '-vf', rate]
+  if (o.format === 'jpg' && o.quality !== undefined) args.push('-q:v', String(o.quality))
+  args.push(output)
+  return args
+}
+
+/**
+ * Escape a path for use inside the `subtitles=` filtergraph value. The value is
+ * wrapped in single quotes by the caller, so only backslashes and single quotes
+ * need escaping; colons and spaces are literal inside the quotes.
+ */
+function escapeFilterPath(p: string): string {
+  return p.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+}
+
+function buildSubtitleArgs(input: string, output: string, o: SubtitleOptions): string[] {
+  if (o.mode === 'burn') {
+    return [
+      '-i',
+      input,
+      '-vf',
+      `subtitles='${escapeFilterPath(o.subtitlePath)}'`,
+      '-c:a',
+      'copy',
+      output
+    ]
+  }
+  // soft mux — pick a subtitle codec compatible with the container
+  const codec = output.toLowerCase().endsWith('.mkv') ? 'srt' : 'mov_text'
+  return [
+    '-i',
+    input,
+    '-i',
+    o.subtitlePath,
+    '-map',
+    '0',
+    '-map',
+    '1:0',
+    '-c',
+    'copy',
+    '-c:s',
+    codec,
+    output
+  ]
+}
+
+function buildAudioArgs(input: string, output: string, o: AudioOptions): string[] {
+  const filters: string[] = []
+  if (o.volume) filters.push(`volume=${o.volume}`)
+
+  // Replace the audio track with an external file.
+  if (o.mode === 'replace' && o.replacementAudioPath) {
+    const args = ['-i', input]
+    if (o.delaySeconds) args.push('-itsoffset', String(o.delaySeconds))
+    args.push('-i', o.replacementAudioPath, '-map', '0:v:0', '-map', '1:a:0', '-c:v', 'copy', '-c:a', 'aac')
+    if (filters.length) args.push('-af', filters.join(','))
+    args.push('-shortest', output)
+    return args
+  }
+
+  // Shift audio for A/V sync using the dual-input offset trick (frame-accurate,
+  // works for negative offsets too).
+  if (o.hasVideo && o.delaySeconds) {
+    const args = [
+      '-i',
+      input,
+      '-itsoffset',
+      String(o.delaySeconds),
+      '-i',
+      input,
+      '-map',
+      '0:v:0',
+      '-map',
+      '1:a:0',
+      '-c:v',
+      'copy',
+      '-c:a',
+      'aac'
+    ]
+    if (filters.length) args.push('-af', filters.join(','))
+    args.push(output)
+    return args
+  }
+
+  // Plain volume/delay on the existing audio (e.g. an audio-only file).
+  if (!o.hasVideo && o.delaySeconds && o.delaySeconds > 0) {
+    filters.push(`adelay=${Math.round(o.delaySeconds * 1000)}:all=1`)
+  }
+  const args = ['-i', input]
+  if (filters.length) args.push('-af', filters.join(','))
+  if (o.hasVideo) args.push('-c:v', 'copy')
+  args.push(output)
+  return args
+}
+
+/** Translate a high-level job spec into the concrete ffmpeg argument vector. */
+export function buildArgs(spec: JobSpec, ctx: BuildContext = {}): string[] {
+  let specific: string[]
+  switch (spec.kind) {
+    case 'convert':
+      specific = buildConvertArgs(spec.input, spec.output, spec.options)
+      break
+    case 'trim':
+      specific = buildTrimArgs(spec.input, spec.output, spec.options)
+      break
+    case 'concat':
+      if (!ctx.concatListPath) throw new Error('concat job requires a prepared list file')
+      specific = buildConcatArgs(ctx.concatListPath, spec.output, spec.options)
+      break
+    case 'scale':
+      specific = buildScaleArgs(spec.input, spec.output, spec.options)
+      break
+    case 'frames':
+      specific = buildFramesArgs(spec.input, spec.output, spec.options)
+      break
+    case 'subtitles':
+      specific = buildSubtitleArgs(spec.input, spec.output, spec.options)
+      break
+    case 'audio':
+      specific = buildAudioArgs(spec.input, spec.output, spec.options)
+      break
+    case 'custom':
+      // Custom jobs already include -i/output; still ensure input is present.
+      specific = spec.args
+      break
+  }
+  return [...GLOBAL_FLAGS, ...specific]
+}
+
+/** A shell-ish, copy-pasteable rendering of the command for the UI. */
+export function renderCommand(ffmpeg: string, args: string[]): string {
+  const quote = (a: string) => (/\s/.test(a) ? `"${a}"` : a)
+  return [ffmpeg, ...args].map(quote).join(' ')
+}

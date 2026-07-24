@@ -1,0 +1,57 @@
+.preview {
+  margin-bottom: 20px;
+}
+
+.sliderWrap {
+  padding: 0 8px;
+}
+
+/* Keep intrinsically-sized controls (like a Switch) from stretching to the
+   full column width inside a Field. */
+.inlineControl {
+  align-self: flex-start;
+}
+
+.times {
+  display: flex;
+  gap: 12px;
+  margin: 20px 0;
+}
+
+.time {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  background: var(--fefe-surface-sunken);
+  border: 1px solid var(--fefe-border);
+  border-radius: 8px;
+}
+
+.timeLabel {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fefe-text-tertiary);
+}
+
+.timeValue {
+  font-family: var(--fefe-mono);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fefe-text-primary);
+}
+
+.footer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--fefe-border);
+
+  > :last-child {
+    align-self: flex-end;
+  }
+}

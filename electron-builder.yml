@@ -1,0 +1,31 @@
+appId: com.synectmedia.fefe
+productName: Fefe
+directories:
+  output: release
+  buildResources: build
+files:
+  - out/**/*
+  - package.json
+# ffmpeg/ffprobe are real binaries: keep them out of the asar so they can be spawned.
+asarUnpack:
+  - "**/node_modules/ffmpeg-static/**"
+  - "**/node_modules/ffprobe-static/**"
+mac:
+  target:
+    - dmg
+    - zip
+  category: public.app-category.video
+  artifactName: ${productName}-${version}-${arch}.${ext}
+win:
+  target:
+    - nsis
+  artifactName: ${productName}-${version}-${arch}.${ext}
+linux:
+  target:
+    - AppImage
+    - deb
+  category: AudioVideo
+  artifactName: ${productName}-${version}-${arch}.${ext}
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true

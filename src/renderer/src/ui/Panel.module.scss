@@ -1,0 +1,37 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  background: var(--fefe-surface);
+  border: 1px solid var(--fefe-border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--fefe-border);
+}
+
+.title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fefe-text-primary);
+}
+
+.extra {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.body {
+  padding: 16px;
+}
+
+.bodyFlush {
+  padding: 0;
+}

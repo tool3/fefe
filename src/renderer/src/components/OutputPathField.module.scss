@@ -1,0 +1,10 @@
+.row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+
+  :global(.ant-input-affix-wrapper),
+  :global(.ant-input) {
+    flex: 1;
+  }
+}

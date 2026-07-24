@@ -1,0 +1,38 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 16px;
+}
+
+.summaryItem {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.summaryLabel {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fefe-text-tertiary);
+}
+
+.summaryValue {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fefe-text-primary);
+}
+
+.path {
+  margin: 16px 0 0;
+  font-size: 12px;
+  font-family: var(--fefe-mono);
+  color: var(--fefe-text-tertiary);
+  word-break: break-all;
+}
