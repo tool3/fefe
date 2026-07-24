@@ -79,6 +79,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # Full history + tags so we can build a changelog since the last release.
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Download all installers
         uses: actions/download-artifact@v4
         with:
@@ -93,13 +99,50 @@ jobs:
       - name: Generate checksums
         run: |
           cd release
-          sha256sum * > checksums.txt
+          # Hash every distributable except the checksum file itself.
+          files=$(find . -maxdepth 1 -type f ! -name checksums.txt -printf '%P\n' | sort)
+          sha256sum $files > checksums.txt
           cat checksums.txt
+
+      - name: Build release notes
+        run: |
+          CURRENT_TAG="${GITHUB_REF#refs/tags/}"
+          PREV_TAG=$(git describe --tags --abbrev=0 "${CURRENT_TAG}^" 2>/dev/null || echo "")
+
+          {
+            echo "## 📦 Artifacts"
+            echo ""
+            echo "| File | SHA-256 |"
+            echo "| ---- | ------- |"
+            while read -r sha file; do
+              echo "| \`${file}\` | \`${sha}\` |"
+            done < release/checksums.txt
+            echo ""
+            echo "## 📝 Changes"
+            echo ""
+            if [ -n "$PREV_TAG" ]; then
+              echo "Changes since \`${PREV_TAG}\`:"
+              echo ""
+              git log --no-merges --pretty=format:'- %s (%h)' "${PREV_TAG}..${CURRENT_TAG}"
+            else
+              echo "Initial release."
+              echo ""
+              git log --no-merges --pretty=format:'- %s (%h)' "${CURRENT_TAG}"
+            fi
+            echo ""
+          } > release-notes.md
+
+          echo "----- release-notes.md -----"
+          cat release-notes.md
+          # Also surface the notes on the workflow run summary page.
+          cat release-notes.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: release/*
+          body_path: release-notes.md
+          # Appends GitHub's auto "What's Changed" (PRs, new contributors) below our notes.
           generate_release_notes: true
           draft: false
           prerelease: ${{ contains(github.ref, '-') }}
