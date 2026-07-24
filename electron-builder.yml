@@ -1,4 +1,4 @@
-appId: com.synectmedia.fefe
+appId: com.talhayut.fefe
 productName: Fefe
 directories:
   output: release
@@ -25,6 +25,7 @@ linux:
     - AppImage
     - deb
   category: AudioVideo
+  maintainer: Tal Hayut <talhayut.devh@gmail.com>
   artifactName: ${productName}-${version}-${arch}.${ext}
 nsis:
   oneClick: false
