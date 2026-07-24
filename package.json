@@ -1,6 +1,6 @@
 {
   "name": "fefe",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A cross-platform desktop UI for ffmpeg — convert, trim, and inspect media.",
   "author": "tool3",
   "main": "./out/main/index.js",
