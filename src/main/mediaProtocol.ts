@@ -82,7 +82,7 @@ export function handleMediaProtocol(): void {
 
     // Parse "bytes=start-end" (either bound may be omitted).
     const match = /bytes=(\d*)-(\d*)/.exec(rangeHeader)
-    let start = match?.[1] ? Number(match[1]) : 0
+    const start = match?.[1] ? Number(match[1]) : 0
     let end = match?.[2] ? Number(match[2]) : size - 1
     if (Number.isNaN(start) || Number.isNaN(end) || start > end || start >= size) {
       return new Response('Range Not Satisfiable', {

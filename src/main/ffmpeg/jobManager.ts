@@ -55,8 +55,14 @@ async function estimateDuration(spec: JobSpec): Promise<number | undefined> {
       return total > 0 ? total : undefined
     }
     case 'frames':
-      // A single-frame grab finishes ~instantly; interval spans the input.
-      return spec.options.mode === 'single' ? undefined : probeDuration(spec.input)
+      // A single-frame grab finishes ~instantly; a segment spans its own
+      // range; interval spans the whole input.
+      if (spec.options.mode === 'single') return undefined
+      if (spec.options.mode === 'segment') {
+        const { start = 0, end = 0 } = spec.options
+        return Math.max(0, end - start)
+      }
+      return probeDuration(spec.input)
     default:
       return probeDuration(spec.input)
   }

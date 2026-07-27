@@ -114,15 +114,28 @@ export interface ScaleOptions {
 
 // ---- Frames / thumbnails ----
 export type FrameFormat = 'png' | 'jpg'
+export type FramesMode = 'single' | 'interval' | 'segment'
 export interface FramesOptions {
-  /** 'single' grabs one frame at `timestamp`; 'interval' dumps many. */
-  mode: 'single' | 'interval'
+  /**
+   * 'single'   grabs one frame at `timestamp`
+   * 'interval' dumps frames across the whole input
+   * 'segment'  dumps every frame between `start` and `end`
+   */
+  mode: FramesMode
   /** Timestamp in seconds for single-frame mode. */
   timestamp?: number
   /** Seconds between frames for interval mode. */
   intervalSeconds?: number
-  /** Alternative to interval: capture this many frames per second. */
+  /**
+   * Capture this many frames per second. In 'interval' mode it is an
+   * alternative to `intervalSeconds`; in 'segment' mode it subsamples the
+   * segment (omit to keep every frame).
+   */
   fps?: number
+  /** Segment start in seconds (segment mode). */
+  start?: number
+  /** Segment end in seconds (segment mode). */
+  end?: number
   format: FrameFormat
   /** JPEG quality 2 (best) – 31 (worst). */
   quality?: number

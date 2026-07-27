@@ -5,14 +5,15 @@ import { OutputPathField } from '@renderer/components/OutputPathField'
 import { api } from '@renderer/lib/api'
 import { formatDuration } from '@renderer/lib/format'
 import { useJobStore } from '@renderer/store/jobStore'
-import type { FrameFormat, MediaInfo } from '@shared/types'
-import { Button, Field, NumberField, Panel, Select, Slider, notify } from '@ui'
+import type { FrameFormat, FramesMode, MediaInfo } from '@shared/types'
+import { Button, Field, NumberField, Panel, RangeSlider, Select, Slider, notify } from '@ui'
 import type { Option } from '@ui'
 import form from '@renderer/features/shared/form.module.scss'
 
-const MODE_OPTIONS: Option<'single' | 'interval'>[] = [
+const MODE_OPTIONS: Option<FramesMode>[] = [
   { label: 'Single frame at timestamp', value: 'single' },
-  { label: 'Every N seconds (sequence)', value: 'interval' }
+  { label: 'Every N seconds (sequence)', value: 'interval' },
+  { label: 'All frames in a segment', value: 'segment' }
 ]
 
 const FORMAT_OPTIONS: Option<FrameFormat>[] = [
@@ -31,9 +32,13 @@ export function FramesPanel({ media }: { media: MediaInfo }): JSX.Element {
   const startJob = useJobStore((s) => s.start)
   const duration = media.format.duration ?? 0
 
-  const [mode, setMode] = useState<'single' | 'interval'>('single')
+  const [mode, setMode] = useState<FramesMode>('single')
   const [timestamp, setTimestamp] = useState(0)
   const [intervalSeconds, setIntervalSeconds] = useState(5)
+  const [range, setRange] = useState<[number, number]>([0, duration])
+  // The time the segment preview frame should show — whichever handle moved.
+  const [previewTime, setPreviewTime] = useState(0)
+  const [segmentFps, setSegmentFps] = useState<number | undefined>(undefined)
   const [format, setFormat] = useState<FrameFormat>('png')
   const [quality, setQuality] = useState(3)
   const [output, setOutput] = useState('')
@@ -53,11 +58,30 @@ export function FramesPanel({ media }: { media: MediaInfo }): JSX.Element {
 
   useEffect(() => {
     setTimestamp(0)
-  }, [media.path])
+    setRange([0, media.format.duration ?? 0])
+    setPreviewTime(0)
+  }, [media.path, media.format.duration])
+
+  const [segStart, segEnd] = range
+  const segLength = Math.max(0, segEnd - segStart)
+
+  const onRangeChange = (next: [number, number]): void => {
+    const [ns, ne] = next
+    const [ps, pe] = range
+    if (ns !== ps) setPreviewTime(ns)
+    else if (ne !== pe) setPreviewTime(ne)
+    setRange(next)
+  }
+
+  // A numbered sequence is written for interval + segment modes.
+  const isSequence = mode === 'interval' || mode === 'segment'
 
   const onSubmit = async (): Promise<void> => {
     if (!output) return notify.warning('Choose an output path first')
-    const finalOutput = mode === 'interval' ? toPattern(output) : output
+    if (mode === 'segment' && segLength <= 0) {
+      return notify.warning('Select a non-empty segment')
+    }
+    const finalOutput = isSequence ? toPattern(output) : output
     setSubmitting(true)
     try {
       await startJob({
@@ -68,6 +92,9 @@ export function FramesPanel({ media }: { media: MediaInfo }): JSX.Element {
           mode,
           timestamp: mode === 'single' ? timestamp : undefined,
           intervalSeconds: mode === 'interval' ? intervalSeconds : undefined,
+          start: mode === 'segment' ? segStart : undefined,
+          end: mode === 'segment' ? segEnd : undefined,
+          fps: mode === 'segment' ? segmentFps : undefined,
           format,
           quality: format === 'jpg' ? quality : undefined
         }
@@ -85,12 +112,18 @@ export function FramesPanel({ media }: { media: MediaInfo }): JSX.Element {
         </div>
       )}
 
+      {mode === 'segment' && (
+        <div style={{ marginBottom: 20 }}>
+          <MediaPreview media={media} start={segStart} end={segEnd} previewTime={previewTime} />
+        </div>
+      )}
+
       <div className={form.grid}>
         <Field label="Mode">
           <Select value={mode} options={MODE_OPTIONS} onChange={setMode} />
         </Field>
 
-        {mode === 'single' ? (
+        {mode === 'single' && (
           <Field label={`Timestamp — ${formatDuration(timestamp, true)}`}>
             <Slider
               value={timestamp}
@@ -101,7 +134,9 @@ export function FramesPanel({ media }: { media: MediaInfo }): JSX.Element {
               tooltipFormatter={(v) => formatDuration(v, true)}
             />
           </Field>
-        ) : (
+        )}
+
+        {mode === 'interval' && (
           <Field label="Interval" hint="Seconds between captured frames">
             <NumberField
               value={intervalSeconds}
@@ -109,6 +144,34 @@ export function FramesPanel({ media }: { media: MediaInfo }): JSX.Element {
               step={0.5}
               onChange={(v) => setIntervalSeconds(v ?? 1)}
               addonAfter="s"
+            />
+          </Field>
+        )}
+
+        {mode === 'segment' && (
+          <Field
+            label={`Segment — ${formatDuration(segStart, true)} → ${formatDuration(segEnd, true)} (${formatDuration(segLength, true)})`}
+          >
+            <RangeSlider
+              value={range}
+              min={0}
+              max={duration || 1}
+              step={0.05}
+              onChange={onRangeChange}
+              tooltipFormatter={(v) => formatDuration(v, true)}
+            />
+          </Field>
+        )}
+
+        {mode === 'segment' && (
+          <Field label="Sample rate" hint="Frames per second — blank captures every frame">
+            <NumberField
+              value={segmentFps}
+              min={0.1}
+              step={1}
+              onChange={setSegmentFps}
+              placeholder="every frame"
+              addonAfter="fps"
             />
           </Field>
         )}
@@ -124,7 +187,7 @@ export function FramesPanel({ media }: { media: MediaInfo }): JSX.Element {
         )}
       </div>
 
-      {mode === 'interval' && (
+      {isSequence && (
         <p className={form.hintRow}>
           A numbered sequence will be written (e.g. <code>name_0001.{format}</code>).
         </p>

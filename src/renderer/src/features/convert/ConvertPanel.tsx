@@ -35,6 +35,9 @@ export function ConvertPanel({ media }: { media: MediaInfo }): JSX.Element {
   const [submitting, setSubmitting] = useState(false)
 
   const audioOnly = AUDIO_ONLY_CONTAINERS.includes(container)
+  // GIF is encoded through a fixed palette pipeline (see buildArgs), so the
+  // codec/quality controls don't apply — only size and frame rate do.
+  const isGif = container === 'gif'
 
   // Apply codec defaults whenever the container changes.
   useEffect(() => {
@@ -99,9 +102,10 @@ export function ConvertPanel({ media }: { media: MediaInfo }): JSX.Element {
     }
   }
 
-  const showCrf = !audioOnly && codecUsesCrf(videoCodec) && !videoBitrate
-  const showPreset = !audioOnly && codecUsesPreset(videoCodec)
-  const showAudioBitrate = audioCodec !== 'copy' && audioCodec !== 'none'
+  const showVideoCodec = !audioOnly && !isGif
+  const showCrf = showVideoCodec && codecUsesCrf(videoCodec) && !videoBitrate
+  const showPreset = showVideoCodec && codecUsesPreset(videoCodec)
+  const showAudioBitrate = !isGif && audioCodec !== 'copy' && audioCodec !== 'none'
 
   return (
     <Panel title="Convert / transcode">
@@ -114,7 +118,7 @@ export function ConvertPanel({ media }: { media: MediaInfo }): JSX.Element {
           />
         </Field>
 
-        {!audioOnly && (
+        {showVideoCodec && (
           <Field label="Video codec">
             <Select<VideoCodec>
               value={videoCodec}
@@ -124,13 +128,15 @@ export function ConvertPanel({ media }: { media: MediaInfo }): JSX.Element {
           </Field>
         )}
 
-        <Field label="Audio codec">
-          <Select<AudioCodec>
-            value={audioCodec}
-            options={AUDIO_CODEC_OPTIONS}
-            onChange={setAudioCodec}
-          />
-        </Field>
+        {!isGif && (
+          <Field label="Audio codec">
+            <Select<AudioCodec>
+              value={audioCodec}
+              options={AUDIO_CODEC_OPTIONS}
+              onChange={setAudioCodec}
+            />
+          </Field>
+        )}
 
         {showCrf && (
           <Field label={`Quality (CRF ${crf})`} hint="Lower = better quality, larger file">
@@ -138,7 +144,7 @@ export function ConvertPanel({ media }: { media: MediaInfo }): JSX.Element {
           </Field>
         )}
 
-        {!audioOnly && (
+        {showVideoCodec && (
           <Field label="Video bitrate" hint="Overrides CRF. e.g. 2M, 5000k">
             <Select<string>
               value={videoBitrate}
